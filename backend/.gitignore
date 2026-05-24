@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Uploads (user-generated content, large binaries)
+uploads/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Logs and process files
+*.log
+*.out
+*.err
+*.pid
+
+# Test media
+test.mp4
+
+# Local CUDA/cache artifacts
+.cache/
+.cuda-toolkit/
+
+# IDE
+.vscode/
+.idea/
