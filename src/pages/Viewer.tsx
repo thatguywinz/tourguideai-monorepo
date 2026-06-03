@@ -140,6 +140,14 @@ export default function Viewer() {
                 yawMaxDeg={viewerConfig?.yaw_max_deg}
                 pitchMinDeg={viewerConfig?.pitch_min_deg}
                 pitchMaxDeg={viewerConfig?.pitch_max_deg}
+                contentYawMinDeg={viewerConfig?.content_yaw_min_deg}
+                contentYawMaxDeg={viewerConfig?.content_yaw_max_deg}
+                contentPitchMinDeg={viewerConfig?.content_pitch_min_deg}
+                contentPitchMaxDeg={viewerConfig?.content_pitch_max_deg}
+                contentLeftNorm={viewerConfig?.content_left_norm}
+                contentRightNorm={viewerConfig?.content_right_norm}
+                contentTopNorm={viewerConfig?.content_top_norm}
+                contentBottomNorm={viewerConfig?.content_bottom_norm}
                 initialYawDeg={viewerConfig?.initial_yaw_deg}
                 initialPitchDeg={viewerConfig?.initial_pitch_deg}
                 verticalFovDeg={viewerConfig?.vertical_fov_deg}

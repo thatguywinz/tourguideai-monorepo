@@ -13,10 +13,21 @@ export interface PanoramaViewerProps {
   imageUrl: string;
   className?: string;
   viewerMode?: PanoramaMode;
+  /** Safe/clamp bounds — where the camera center may point */
   yawMinDeg?: number;
   yawMaxDeg?: number;
   pitchMinDeg?: number;
   pitchMaxDeg?: number;
+  /** Content bounds — angular extent the actual captured pixels occupy (drives geometry) */
+  contentYawMinDeg?: number;
+  contentYawMaxDeg?: number;
+  contentPitchMinDeg?: number;
+  contentPitchMaxDeg?: number;
+  /** Where the content sits within the texture (0..1); padding lies outside this region */
+  contentLeftNorm?: number;
+  contentRightNorm?: number;
+  contentTopNorm?: number;
+  contentBottomNorm?: number;
   initialYawDeg?: number;
   initialPitchDeg?: number;
   verticalFovDeg?: number;
@@ -416,6 +427,14 @@ export default function PanoramaViewer({
   yawMaxDeg,
   pitchMinDeg,
   pitchMaxDeg,
+  contentYawMinDeg,
+  contentYawMaxDeg,
+  contentPitchMinDeg,
+  contentPitchMaxDeg,
+  contentLeftNorm,
+  contentRightNorm,
+  contentTopNorm,
+  contentBottomNorm,
   initialYawDeg,
   initialPitchDeg,
   verticalFovDeg,
@@ -480,16 +499,46 @@ export default function PanoramaViewer({
   const fovMin = minHfovDeg ? Math.max(20, minHfovDeg * 0.6) : 25;
   const fovMax = maxHfovDeg ? Math.min(maxHfovDeg * 0.7, 80) : Math.min(cameraFov + 10, 80);
 
-  // For the partial sphere geometry: theta start/length in Three.js SphereGeometry convention
-  // SphereGeometry thetaStart is measured from +X axis going counterclockwise when viewed from above
-  // Our spherical.theta: 0 = +Z, increases counterclockwise
-  // Mapping: geoTheta = PI/2 - theta  =>  for yawMin..yawMax, geoStart = PI/2 - yawMax, geoLength = yawMax-yawMin
-  const geoThetaStart = Math.PI / 2 - yawMaxRad;
-  const geoThetaLength = yawMaxRad - yawMinRad;
+  // --- Geometry (texture) bounds ---------------------------------------
+  // The full panorama texture spans these angles. Derived from the captured
+  // CONTENT bounds (not the tighter camera clamp), so the image is never
+  // squished into the small "safe" region. We fall back to the clamp bounds
+  // when content bounds are absent (older rooms) to preserve prior behavior.
+  const cYawMin = contentYawMinDeg ?? yawMinDeg ?? -90;
+  const cYawMax = contentYawMaxDeg ?? yawMaxDeg ?? 90;
+  const cPitchMin = contentPitchMinDeg ?? pitchMinDeg ?? -45;
+  const cPitchMax = contentPitchMaxDeg ?? pitchMaxDeg ?? 45;
+  const lNorm = contentLeftNorm ?? 0;
+  const rNorm = contentRightNorm ?? 1;
+  const tNorm = contentTopNorm ?? 0;
+  const bNorm = contentBottomNorm ?? 1;
+
+  // Map full-texture U:[0,1] -> yaw and V:[0,1] -> pitch so the content
+  // sub-region [lNorm,rNorm] x [tNorm,bNorm] lines up with the content angles.
+  // Any baked-in padding (outside that sub-region) maps beyond the content
+  // angles and stays hidden behind the camera clamp.
+  const uSpan = Math.max(0.01, rNorm - lNorm);
+  const yawPerU = (cYawMax - cYawMin) / uSpan;
+  const geomYawMinRad = ((cYawMin - lNorm * yawPerU) * Math.PI) / 180;
+  const geomYawMaxRad = ((cYawMax + (1 - rNorm) * yawPerU) * Math.PI) / 180;
+
+  const vSpan = Math.max(0.01, bNorm - tNorm);
+  const pitchPerV = (cPitchMax - cPitchMin) / vSpan;
+  const geomPitchMaxDeg = cPitchMax + tNorm * pitchPerV;       // texture top (V=0) = highest pitch
+  const geomPitchMinDeg = cPitchMin - (1 - bNorm) * pitchPerV; // texture bottom (V=1) = lowest pitch
+
+  // SphereGeometry thetaStart is measured from +X axis going counterclockwise when viewed from above.
+  // Our spherical.theta: 0 = +Z, increases counterclockwise. Mapping: geoTheta = PI/2 - yaw.
+  const geoThetaStart = Math.PI / 2 - geomYawMaxRad;
+  const geoThetaLength = geomYawMaxRad - geomYawMinRad;
+  // SphereGeometry phi: 0 = top pole, PI = bottom pole; phi = PI/2 - pitch.
+  const geomPhiMin = Math.max(0.001, Math.PI / 2 - (geomPitchMaxDeg * Math.PI) / 180);
+  const geomPhiMax = Math.min(Math.PI - 0.001, Math.PI / 2 - (geomPitchMinDeg * Math.PI) / 180);
 
   console.log('[PanoramaViewer] mode:', resolvedMode,
-    'yaw:', yawMinDeg, '→', yawMaxDeg,
-    'pitch:', pitchMinDeg, '→', pitchMaxDeg,
+    'clampYaw:', yawMinDeg, '→', yawMaxDeg, 'clampPitch:', pitchMinDeg, '→', pitchMaxDeg,
+    'geomYaw:', (geomYawMinRad * 180 / Math.PI).toFixed(1), '→', (geomYawMaxRad * 180 / Math.PI).toFixed(1),
+    'geomPitch:', geomPitchMinDeg.toFixed(1), '→', geomPitchMaxDeg.toFixed(1),
     'fov:', cameraFov, 'fovRange:', fovMin, '-', fovMax);
 
   const modeLabel = resolvedMode === 'panorama_360' ? '360 View'
@@ -545,8 +594,8 @@ export default function PanoramaViewer({
                   imageUrl={imageUrl}
                   thetaStart={geoThetaStart}
                   thetaLength={geoThetaLength}
-                  phiMin={phiMin}
-                  phiMax={phiMax}
+                  phiMin={geomPhiMin}
+                  phiMax={geomPhiMax}
                   onLoaded={handleLoaded}
                 />
                 <CameraControlsPartial

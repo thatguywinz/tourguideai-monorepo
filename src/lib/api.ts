@@ -43,10 +43,21 @@ export interface ViewerConfig {
   recommended_hfov_deg?: number;
   min_hfov_deg?: number;
   max_hfov_deg?: number;
+  // Safe/clamp bounds — where the camera CENTER may point (keeps padding/edges out of view)
   yaw_min_deg?: number;
   yaw_max_deg?: number;
   pitch_min_deg?: number;
   pitch_max_deg?: number;
+  // Content bounds — the angular extent the actual captured pixels occupy (used to build geometry)
+  content_yaw_min_deg?: number;
+  content_yaw_max_deg?: number;
+  content_pitch_min_deg?: number;
+  content_pitch_max_deg?: number;
+  // Where the content sits within the texture (0..1), with any baked-in padding outside this region
+  content_left_norm?: number;
+  content_right_norm?: number;
+  content_top_norm?: number;
+  content_bottom_norm?: number;
   initial_yaw_deg?: number;
   initial_pitch_deg?: number;
   initial_pitch?: number;  // degrees
