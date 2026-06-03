@@ -40,17 +40,33 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# CORS — restrict to the deployed frontend URL in production, allow all in dev
+# CORS — allow the deployed frontend(s) in production, and all origins in dev.
+# FRONTEND_URL may be a single origin or a comma-separated list of origins.
+# We also always allow this project's Vercel deployments (production + preview
+# URLs change per deployment) and local dev servers via a regex, so the API
+# keeps working without re-pinning FRONTEND_URL on every new frontend deploy.
 _frontend_url = os.environ.get("FRONTEND_URL", "")
-_cors_origins = [_frontend_url] if _frontend_url else ["*"]
+_cors_origins = [o.strip() for o in _frontend_url.split(",") if o.strip()]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
+# Matches https://tourguideai-monorepo*.vercel.app (prod alias + preview builds)
+# and http://localhost:<port> / http://127.0.0.1:<port> for local development.
+# Fully anchored so it is safe whether Starlette uses re.match or re.fullmatch.
+_cors_origin_regex = (
+    r"^(https://tourguideai[a-z0-9-]*\.vercel\.app"
+    r"|http://(localhost|127\.0\.0\.1)(:\d+)?)$"
+)
+
+_cors_kwargs = dict(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_origin_regex=_cors_origin_regex,
 )
+
+# If no explicit origins are configured, fall back to allowing all (dev only).
+_cors_kwargs["allow_origins"] = _cors_origins if _cors_origins else ["*"]
+
+app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 
 def _to_builtin_json(value):

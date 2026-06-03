@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 import type { ViewerConfig } from '@/lib/api';
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 const DEFAULT_LOOK_AT = new THREE.Vector3(0, 0, 0);
 const INITIAL_CAMERA_POSITION = new THREE.Vector3(0, 3, 10);
 const FALLBACK_CAMERA_POSITION = new THREE.Vector3(0, 5, 15);

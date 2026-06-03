@@ -5,7 +5,7 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import * as THREE from 'three';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 function resolvePlyUrl(pointcloudUrl: string): string {
   if (pointcloudUrl.startsWith('http')) return pointcloudUrl;
