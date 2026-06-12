@@ -5,8 +5,8 @@ import { Camera, MousePointerClick, Share2, ArrowRight, Home, CheckCircle2 } fro
 const steps = [
   {
     icon: Home,
-    title: 'Welcome to TourGuide AI',
-    description: 'Create immersive virtual home tours using just your phone. No expensive cameras or professional equipment needed.',
+    title: 'Welcome to RoomShare',
+    description: 'Create and share interactive 3D room tours from a panorama, using just your phone. No expensive cameras or professional equipment needed.',
     tip: 'Perfect for real estate agents, homeowners, and property managers.',
   },
   {

@@ -3,7 +3,6 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Home } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Auth() {
@@ -36,12 +35,12 @@ export default function Auth() {
       <div className="w-full max-w-sm space-y-8 animate-fade-in-up">
         <div className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Home className="h-6 w-6 text-accent" />
-            <span className="text-xl font-semibold">TourGuide AI</span>
+            <img src="/roomshare.png" alt="RoomShare" className="h-8 w-8" />
+            <span className="text-xl font-semibold">RoomShare</span>
           </div>
           <h1 className="text-2xl font-bold">{isSignUp ? 'Create account' : 'Welcome back'}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {isSignUp ? 'Start creating virtual tours' : 'Sign in to your account'}
+            {isSignUp ? 'Start creating 3D room tours' : 'Sign in to your account'}
           </p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -78,8 +78,9 @@ export default function CreateRoom() {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="w-full border-b border-border/60 bg-card/80 backdrop-blur-sm">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-6 h-14">
-          <span className="font-semibold text-foreground tracking-tight text-lg">
-            TourGuide&nbsp;<span className="text-accent">AI</span>
+          <span className="inline-flex items-center gap-2 font-semibold text-foreground tracking-tight text-lg">
+            <img src="/roomshare.png" alt="" className="h-6 w-6" />
+            <span>Room<span className="text-accent">Share</span></span>
           </span>
         </div>
       </header>

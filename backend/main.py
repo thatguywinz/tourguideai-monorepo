@@ -35,7 +35,7 @@ from jobs import run_panorama_processing, run_reconstruction
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="TourGuide AI — Backend",
+    title="RoomShare — Backend",
     description="Panorama-first MVP backend for immersive room tours.",
     version="0.1.0",
 )

@@ -48,7 +48,7 @@ export default function Viewer() {
     if (isTouchDevice && typeof navigator.share === 'function') {
       try {
         await navigator.share({
-          title: `${displayName} — TourGuide AI`,
+          title: `${displayName} — RoomShare`,
           text: `Take a 360° tour of ${displayName}`,
           url: shareUrl,
         });
@@ -149,8 +149,9 @@ export default function Viewer() {
             <button onClick={() => navigate('/')} className="p-1.5 -ml-1.5 rounded-lg hover:bg-muted transition-colors">
               <ArrowLeft className="h-4 w-4 text-muted-foreground" />
             </button>
-            <span className="font-semibold text-foreground tracking-tight text-lg">
-              TourGuide&nbsp;<span className="text-accent">AI</span>
+            <span className="inline-flex items-center gap-2 font-semibold text-foreground tracking-tight text-lg">
+              <img src="/roomshare.png" alt="" className="h-6 w-6" />
+              <span>Room<span className="text-accent">Share</span></span>
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -245,8 +246,9 @@ function ViewerHeader({ navigate }: { navigate: (path: string) => void }) {
   return (
     <header className="w-full border-b border-border/60 bg-card/80 backdrop-blur-sm">
       <div className="max-w-[1400px] mx-auto flex items-center px-4 sm:px-6 h-14">
-        <span className="font-semibold text-foreground tracking-tight text-lg cursor-pointer" onClick={() => navigate('/')}>
-          TourGuide&nbsp;<span className="text-accent">AI</span>
+        <span className="inline-flex items-center gap-2 font-semibold text-foreground tracking-tight text-lg cursor-pointer" onClick={() => navigate('/')}>
+          <img src="/roomshare.png" alt="" className="h-6 w-6" />
+          <span>Room<span className="text-accent">Share</span></span>
         </span>
       </div>
     </header>

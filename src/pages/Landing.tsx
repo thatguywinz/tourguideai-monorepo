@@ -14,8 +14,8 @@ export default function Landing() {
       {/* Header */}
       <header className="container flex h-16 items-center justify-between">
         <div className="flex items-center gap-2 font-semibold">
-          <Box className="h-5 w-5 text-accent" />
-          <span>TourGuide AI</span>
+          <img src="/roomshare.png" alt="RoomShare" className="h-7 w-7" />
+          <span>RoomShare</span>
         </div>
         <Link to={user ? '/dashboard' : '/auth'}>
           <Button variant="outline" size="sm">{user ? 'Dashboard' : 'Sign In'}</Button>
@@ -26,15 +26,15 @@ export default function Landing() {
       <section className="container max-w-5xl py-20 md:py-32">
         <div className="text-center animate-fade-in-up max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent text-sm font-medium mb-6">
-            <Cpu className="h-3.5 w-3.5" /> Powered by 3D Reconstruction AI
+            <Cpu className="h-3.5 w-3.5" /> Turn panoramas into 3D tours
           </div>
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-tight">
-            Real 3D home tours
+            Create and share interactive 3D room tours
             <br />
-            <span className="text-gradient">from your phone</span>
+            <span className="text-gradient">from a panorama</span>
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-xl mx-auto">
-            Capture photos or video of any room, and our AI builds a real 3D model you can explore, rotate, and share — not a slideshow, not a panorama.
+            RoomShare turns room panoramas into shareable 3D tour links, giving people a more immersive way to showcase spaces online.
           </p>
           <div className="mt-8 flex justify-center gap-3">
             <Link to={user ? '/dashboard' : '/auth'}>
@@ -46,7 +46,7 @@ export default function Landing() {
           <div className="mt-6 flex items-center justify-center gap-6 text-sm text-muted-foreground">
             <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4 text-accent" /> Free to use</span>
             <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4 text-accent" /> No equipment</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4 text-accent" /> Real 3D models</span>
+            <span className="flex items-center gap-1"><CheckCircle2 className="h-4 w-4 text-accent" /> Share with a link</span>
           </div>
         </div>
       </section>
@@ -56,16 +56,16 @@ export default function Landing() {
         <div className="container max-w-4xl">
           <div className="text-center mb-14 animate-fade-in-up">
             <p className="text-sm font-medium text-accent tracking-wide uppercase mb-2">How It Works</p>
-            <h2 className="text-3xl md:text-4xl font-bold">From phone photos to 3D tour</h2>
+            <h2 className="text-3xl md:text-4xl font-bold">From panorama to 3D tour</h2>
             <p className="mt-3 text-muted-foreground max-w-lg mx-auto">
               No special cameras. No professionals. Just your phone and a few minutes.
             </p>
           </div>
           <div className="grid md:grid-cols-4 gap-6">
             {[
-              { icon: Camera, title: 'Capture', desc: 'Take 20–60 overlapping photos or a short video of each room.', step: '01' },
-              { icon: Cpu, title: 'Process', desc: 'Our AI reconstructs a real 3D model from your captures.', step: '02' },
-              { icon: Eye, title: 'Explore', desc: 'Rotate, zoom, and walk through each room in full 3D.', step: '03' },
+              { icon: Camera, title: 'Capture', desc: 'Take a panorama of your room with your phone, or upload an existing 360° image.', step: '01' },
+              { icon: Cpu, title: 'Process', desc: 'RoomShare turns your panorama into an interactive 3D room tour.', step: '02' },
+              { icon: Eye, title: 'Explore', desc: 'Look around, zoom, and explore each room in immersive 3D.', step: '03' },
               { icon: Share2, title: 'Share', desc: 'Publish your tour and share a link with anyone.', step: '04' },
             ].map(({ icon: Icon, title, desc, step }, i) => (
               <div key={title} className={`relative p-6 rounded-2xl bg-card border shadow-sm animate-fade-in-up stagger-${i + 1}`}>
@@ -90,12 +90,12 @@ export default function Landing() {
           </div>
           <div className="grid sm:grid-cols-2 gap-6">
             {[
-              { icon: Box, title: 'True 3D reconstruction', desc: 'Not panoramas — real 3D models built from your photos using AI reconstruction.' },
-              { icon: Smartphone, title: 'Phone-first capture', desc: 'Designed for phones. Take photos or video — no special equipment needed.' },
+              { icon: Box, title: 'Immersive 3D tours', desc: 'Your panoramas become interactive 3D rooms people can look around — far beyond a static photo.' },
+              { icon: Smartphone, title: 'Phone-first capture', desc: 'Designed for phones. Take a panorama — no special equipment needed.' },
               { icon: Maximize2, title: 'Interactive 3D viewer', desc: 'Rotate, zoom, and explore rooms in full WebGL 3D with smooth controls.' },
-              { icon: Globe2, title: 'One-click publishing', desc: 'Generate a shareable link instantly. Anyone can view your 3D tour.' },
+              { icon: Globe2, title: 'One-click publishing', desc: 'Generate a shareable link instantly. Anyone can view your room tour.' },
               { icon: Layers, title: 'Multi-room tours', desc: 'Link all rooms into one seamless tour with room-by-room navigation.' },
-              { icon: Cpu, title: 'AI processing pipeline', desc: 'Camera estimation, mesh building, and scene optimization — all automated.' },
+              { icon: Cpu, title: 'Automatic processing', desc: 'Upload a panorama and RoomShare handles the rest — projection, alignment, and viewer setup.' },
             ].map(({ icon: Icon, title, desc }, i) => (
               <div key={title} className={`flex gap-4 p-5 rounded-xl border bg-card animate-fade-in-up stagger-${i + 1}`}>
                 <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
@@ -114,9 +114,9 @@ export default function Landing() {
       {/* CTA */}
       <section className="border-t bg-primary py-16 md:py-20">
         <div className="container max-w-2xl text-center animate-fade-in-up">
-          <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground">Ready to create your first 3D tour?</h2>
+          <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground">Ready to create your first room tour?</h2>
           <p className="mt-4 text-primary-foreground/70">
-            Capture your property in minutes. No special equipment required.
+            Turn a panorama into a shareable 3D tour in minutes. No special equipment required.
           </p>
           <Link to={user ? '/dashboard' : '/auth'} className="inline-block mt-8">
             <Button size="lg" variant="secondary">
@@ -129,7 +129,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t py-8">
         <div className="container text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} TourGuide AI
+          © {new Date().getFullYear()} RoomShare
         </div>
       </footer>
     </div>

@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Box, LogOut, Menu, X } from 'lucide-react';
+import { LogOut, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -14,8 +14,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-50 border-b bg-card/80 backdrop-blur-md">
         <div className="container flex h-14 items-center justify-between">
           <Link to="/dashboard" className="flex items-center gap-2 font-semibold text-foreground">
-            <Box className="h-5 w-5 text-accent" />
-            <span className="hidden sm:inline">TourGuide AI</span>
+            <img src="/roomshare.png" alt="RoomShare" className="h-7 w-7" />
+            <span className="hidden sm:inline">RoomShare</span>
           </Link>
 
           <div className="hidden md:flex items-center gap-3">
