@@ -28,6 +28,7 @@ from config import (
     PANORAMA_UPLOAD_FULL_MAX_WIDTH,
     PANORAMA_UPLOAD_MIN_WIDTH,
     PANORAMA_PARTIAL_MIN_ASPECT_RATIO,
+    PANORAMA_PARTIAL_ASSUMED_VFOV_DEG,
     PANORAMA_PARTIAL_DEFAULT_HFOV_DEG,
     PANORAMA_PARTIAL_EDGE_FILL_BAND_RATIO,
     PANORAMA_PARTIAL_EDGE_FILL_BLUR_RADIUS,
@@ -148,10 +149,16 @@ def classify_panorama_input(analysis: dict) -> tuple[str, str]:
 
 
 def estimate_panorama_horizontal_fov(width: int, height: int) -> float:
-    """Estimate the horizontal sweep covered by a panorama from its aspect ratio."""
+    """Estimate the horizontal sweep covered by a panorama from its aspect ratio.
+
+    Handheld sweep panoramas cover roughly PANORAMA_PARTIAL_ASSUMED_VFOV_DEG
+    vertically, so the horizontal sweep scales with the aspect ratio from there.
+    """
     if width <= 0 or height <= 0:
         return 0.0
-    return float(min(360.0, 180.0 * (float(width) / float(height))))
+    return float(
+        min(360.0, PANORAMA_PARTIAL_ASSUMED_VFOV_DEG * (float(width) / float(height)))
+    )
 
 
 def build_partial_panorama_viewer_config(
@@ -187,25 +194,43 @@ def build_partial_panorama_viewer_config(
     if horizontal_fov_deg is None:
         horizontal_fov_deg = estimate_panorama_horizontal_fov(width, height)
     horizontal_fov_deg = round(float(horizontal_fov_deg), 2)
-    aspect_ratio = float(width) / float(height) if height else 1.0
-    vertical_fov_deg = round(min(52.0, max(34.0, horizontal_fov_deg * 0.17)), 2)
+
+    # Vertical coverage follows from the captured pixels' aspect ratio so the
+    # texture maps onto the sphere without stretching. Prefer the true content
+    # resolution (the canvas may include padding).
+    if content_resolution and content_resolution[1] > 0:
+        content_aspect = float(content_resolution[0]) / float(content_resolution[1])
+    else:
+        content_aspect = float(width) / float(height) if height else 1.0
+    vertical_fov_deg = round(
+        min(90.0, max(30.0, horizontal_fov_deg / max(content_aspect, 0.1))), 2
+    )
     half_span = round(horizontal_fov_deg / 2.0, 2)
     half_pitch = round(vertical_fov_deg / 2.0, 2)
     recommended_hfov_deg = round(
-        min(PANORAMA_PARTIAL_DEFAULT_HFOV_DEG, max(48.0, horizontal_fov_deg * 0.28)),
+        min(
+            PANORAMA_PARTIAL_DEFAULT_HFOV_DEG,
+            max(45.0, horizontal_fov_deg * 0.4),
+            horizontal_fov_deg * 0.85,
+        ),
         2,
     )
-    max_hfov_deg = round(min(PANORAMA_PARTIAL_MAX_HFOV_DEG, recommended_hfov_deg + 8.0), 2)
-    min_hfov_deg = 35.0
-    safe_margin_deg = max(PANORAMA_PARTIAL_SAFE_YAW_MARGIN_DEG, max_hfov_deg / 2.0 + 1.5)
-    safe_yaw_min = round(min(0.0, -half_span + safe_margin_deg), 2)
-    safe_yaw_max = round(max(0.0, half_span - safe_margin_deg), 2)
+    max_hfov_deg = round(
+        max(recommended_hfov_deg, min(PANORAMA_PARTIAL_MAX_HFOV_DEG, horizontal_fov_deg * 0.9)),
+        2,
+    )
+    min_hfov_deg = 30.0
+
+    # Keep these margins small: the viewer clamps the camera center by half the
+    # camera FOV against these bounds, so large margins double-clamp and can
+    # freeze the camera entirely.
+    safe_yaw_min = round(min(0.0, -half_span + PANORAMA_PARTIAL_SAFE_YAW_MARGIN_DEG), 2)
+    safe_yaw_max = round(max(0.0, half_span - PANORAMA_PARTIAL_SAFE_YAW_MARGIN_DEG), 2)
     if safe_yaw_min > safe_yaw_max:
         safe_yaw_min = safe_yaw_max = 0.0
 
-    safe_pitch_margin = max(PANORAMA_PARTIAL_SAFE_PITCH_MARGIN_DEG, vertical_fov_deg * 0.35)
-    safe_pitch_min = round(min(0.0, -half_pitch + safe_pitch_margin), 2)
-    safe_pitch_max = round(max(0.0, half_pitch - safe_pitch_margin), 2)
+    safe_pitch_min = round(min(0.0, -half_pitch + PANORAMA_PARTIAL_SAFE_PITCH_MARGIN_DEG), 2)
+    safe_pitch_max = round(max(0.0, half_pitch - PANORAMA_PARTIAL_SAFE_PITCH_MARGIN_DEG), 2)
     if safe_pitch_min > safe_pitch_max:
         safe_pitch_min = safe_pitch_max = 0.0
 

@@ -50,32 +50,37 @@ PANORAMA_FALLBACK_MAX_FRAMES: int = 12
 PANORAMA_UPLOAD_FULL_MAX_WIDTH: int = 8192
 """Maximum width preserved for direct uploaded panorama masters."""
 
-PANORAMA_UPLOAD_MIN_WIDTH: int = 2000
+PANORAMA_UPLOAD_MIN_WIDTH: int = 1200
 """Minimum width for a direct upload to qualify as a solid 360 panorama."""
 
 PANORAMA_UPLOAD_360_ASPECT_TOLERANCE: float = 0.12
 """Allowed absolute deviation from 2:1 for direct panorama uploads."""
 
-PANORAMA_PARTIAL_MIN_WIDTH: int = 1400
+PANORAMA_PARTIAL_MIN_WIDTH: int = 1000
 """Minimum width for a non-360 panorama to still be immersive enough for bounded drag viewing."""
 
-PANORAMA_PARTIAL_MIN_ASPECT_RATIO: float = 1.15
+PANORAMA_PARTIAL_MIN_ASPECT_RATIO: float = 1.35
 """Minimum aspect ratio for a direct upload to qualify as a partial immersive panorama."""
 
-PANORAMA_PARTIAL_MIN_HORIZONTAL_FOV_DEG: float = 140.0
+PANORAMA_PARTIAL_MIN_HORIZONTAL_FOV_DEG: float = 80.0
 """Minimum estimated horizontal field of view required for partial immersive panorama mode."""
 
-PANORAMA_PARTIAL_DEFAULT_HFOV_DEG: float = 60.0
+PANORAMA_PARTIAL_ASSUMED_VFOV_DEG: float = 60.0
+"""Assumed vertical field of view of a handheld sweep panorama, used to estimate its horizontal sweep."""
+
+PANORAMA_PARTIAL_DEFAULT_HFOV_DEG: float = 75.0
 """Recommended starting horizontal field of view for bounded partial panoramas."""
 
-PANORAMA_PARTIAL_MAX_HFOV_DEG: float = 72.0
-"""Maximum horizontal field of view allowed before padding risks becoming visible."""
+PANORAMA_PARTIAL_MAX_HFOV_DEG: float = 100.0
+"""Maximum horizontal field of view allowed when zooming out of a partial panorama."""
 
-PANORAMA_PARTIAL_SAFE_YAW_MARGIN_DEG: float = 8.0
-"""Extra yaw guard band inside the captured sweep so users cannot see the cut seam."""
+PANORAMA_PARTIAL_SAFE_YAW_MARGIN_DEG: float = 1.5
+"""Extra yaw guard band inside the captured sweep so users cannot see the cut seam.
+The viewer additionally clamps by half the camera FOV, so this stays small."""
 
-PANORAMA_PARTIAL_SAFE_PITCH_MARGIN_DEG: float = 6.0
-"""Extra pitch guard band to keep the viewer away from distorted vertical extremes."""
+PANORAMA_PARTIAL_SAFE_PITCH_MARGIN_DEG: float = 1.5
+"""Extra pitch guard band to keep the viewer away from distorted vertical extremes.
+The viewer additionally clamps by half the camera FOV, so this stays small."""
 
 PANORAMA_PARTIAL_EDGE_FILL_BAND_RATIO: float = 0.035
 """Width ratio of the edge band sampled when filling partial-panorama side padding."""

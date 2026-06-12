@@ -9,6 +9,17 @@ import { Maximize, Minimize } from 'lucide-react';
 
 export type PanoramaMode = 'panorama_360' | 'panorama_partial' | 'panorama_flat';
 
+/** Assumed vertical coverage of a handheld sweep panorama (used when the
+ *  backend supplies no angular bounds — the horizontal sweep then follows
+ *  from the image aspect ratio). */
+const ASSUMED_SWEEP_VFOV_DEG = 60;
+
+/** Convert a horizontal FOV to the vertical FOV three.js cameras use. */
+function hfovToVfovDeg(hfovDeg: number, aspect: number): number {
+  const halfH = (hfovDeg * Math.PI) / 360;
+  return (2 * Math.atan(Math.tan(halfH) / Math.max(aspect, 0.1)) * 180) / Math.PI;
+}
+
 export interface PanoramaViewerProps {
   imageUrl: string;
   className?: string;
@@ -231,8 +242,9 @@ function CameraControlsPartial({
   phiMaxRad,
   initialYawRad,
   initialPhiRad,
-  fovMin,
-  fovMax,
+  hfovDeg,
+  hfovMinDeg,
+  hfovMaxDeg,
 }: {
   yawMinRad: number;
   yawMaxRad: number;
@@ -240,59 +252,75 @@ function CameraControlsPartial({
   phiMaxRad: number;
   initialYawRad: number;
   initialPhiRad: number;
-  fovMin: number;
-  fovMax: number;
+  hfovDeg: number;
+  hfovMinDeg: number;
+  hfovMaxDeg: number;
 }) {
-  const { camera, gl } = useThree();
+  const { camera, gl, size } = useThree();
   const isDragging = useRef(false);
   const prev = useRef({ x: 0, y: 0 });
   const spherical = useRef(new THREE.Spherical(1, initialPhiRad, initialYawRad));
   const target = useRef(new THREE.Vector3());
+  const hfov = useRef(Math.max(hfovMinDeg, Math.min(hfovMaxDeg, hfovDeg)));
 
-  // Dynamically clamp theta so the camera FOV never extends past the geometry edges
-  const clampWithFov = useCallback((theta: number, fov: number, aspect: number) => {
-    // Half the horizontal FOV in radians
-    const hFovRad = (fov * aspect * Math.PI) / 360;
-    const effectiveMin = yawMinRad + hFovRad;
-    const effectiveMax = yawMaxRad - hFovRad;
+  // The camera's vertical FOV may never exceed the captured vertical span,
+  // otherwise empty space above/below the panorama is always in view.
+  const vfovCapDeg = Math.max(20, ((phiMaxRad - phiMinRad) * 180) / Math.PI * 0.95);
+
+  // Clamp theta so the camera frustum never extends past the geometry edges
+  const clampThetaWithFov = useCallback((theta: number) => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const halfHRad = Math.atan(Math.tan((cam.fov * Math.PI) / 360) * cam.aspect);
+    const effectiveMin = yawMinRad + halfHRad;
+    const effectiveMax = yawMaxRad - halfHRad;
     if (effectiveMin >= effectiveMax) {
       return (yawMinRad + yawMaxRad) / 2;
     }
     return Math.max(effectiveMin, Math.min(effectiveMax, theta));
-  }, [yawMinRad, yawMaxRad]);
+  }, [camera, yawMinRad, yawMaxRad]);
 
-  const clampPhiWithFov = useCallback((phi: number, fov: number) => {
-    const halfVFovRad = (fov * Math.PI) / 360;
-    const effectiveMin = phiMinRad + halfVFovRad;
-    const effectiveMax = phiMaxRad - halfVFovRad;
+  const clampPhiWithFov = useCallback((phi: number) => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const halfVRad = (cam.fov * Math.PI) / 360;
+    const effectiveMin = phiMinRad + halfVRad;
+    const effectiveMax = phiMaxRad - halfVRad;
     if (effectiveMin >= effectiveMax) {
       return (phiMinRad + phiMaxRad) / 2;
     }
     return Math.max(effectiveMin, Math.min(effectiveMax, phi));
-  }, [phiMinRad, phiMaxRad]);
+  }, [camera, phiMinRad, phiMaxRad]);
+
+  const applyHfov = useCallback(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    cam.fov = Math.min(hfovToVfovDeg(hfov.current, cam.aspect), vfovCapDeg);
+    cam.updateProjectionMatrix();
+    spherical.current.theta = clampThetaWithFov(spherical.current.theta);
+    spherical.current.phi = clampPhiWithFov(spherical.current.phi);
+  }, [camera, vfovCapDeg, clampThetaWithFov, clampPhiWithFov]);
+
+  // Apply FOV on mount and whenever the viewport aspect changes
+  useEffect(() => { applyHfov(); }, [applyHfov, size.width, size.height]);
 
   useEffect(() => {
     const el = gl.domElement;
     const cam = camera as THREE.PerspectiveCamera;
+    // Pixel movement -> rotation matched to the visible FOV, so dragging
+    // feels like grabbing the scene at any zoom level
+    const radPerPx = () => ((cam.fov * Math.PI) / 180) / Math.max(el.clientHeight, 1);
 
     const onDown = (e: PointerEvent) => { isDragging.current = true; prev.current = { x: e.clientX, y: e.clientY }; el.style.cursor = 'grabbing'; };
     const onMove = (e: PointerEvent) => {
       if (!isDragging.current) return;
-      const newTheta = spherical.current.theta - (e.clientX - prev.current.x) * 0.003;
-      const newPhi = spherical.current.phi + (e.clientY - prev.current.y) * 0.003;
-      spherical.current.theta = clampWithFov(newTheta, cam.fov, cam.aspect);
-      spherical.current.phi = clampPhiWithFov(newPhi, cam.fov);
+      const k = radPerPx();
+      spherical.current.theta = clampThetaWithFov(spherical.current.theta - (e.clientX - prev.current.x) * k);
+      spherical.current.phi = clampPhiWithFov(spherical.current.phi + (e.clientY - prev.current.y) * k);
       prev.current = { x: e.clientX, y: e.clientY };
     };
     const onUp = () => { isDragging.current = false; el.style.cursor = 'grab'; };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const newFov = Math.max(fovMin, Math.min(fovMax, cam.fov + e.deltaY * 0.05));
-      cam.fov = newFov;
-      cam.updateProjectionMatrix();
-      // Re-clamp position after zoom change
-      spherical.current.theta = clampWithFov(spherical.current.theta, cam.fov, cam.aspect);
-      spherical.current.phi = clampPhiWithFov(spherical.current.phi, cam.fov);
+      hfov.current = Math.max(hfovMinDeg, Math.min(hfovMaxDeg, hfov.current + e.deltaY * 0.05));
+      applyHfov();
     };
 
     let lastDist = 0;
@@ -303,18 +331,14 @@ function CameraControlsPartial({
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
       if (e.touches.length === 1 && isDragging.current) {
-        const newTheta = spherical.current.theta - (e.touches[0].clientX - prev.current.x) * 0.003;
-        const newPhi = spherical.current.phi + (e.touches[0].clientY - prev.current.y) * 0.003;
-        spherical.current.theta = clampWithFov(newTheta, cam.fov, cam.aspect);
-        spherical.current.phi = clampPhiWithFov(newPhi, cam.fov);
+        const k = radPerPx();
+        spherical.current.theta = clampThetaWithFov(spherical.current.theta - (e.touches[0].clientX - prev.current.x) * k);
+        spherical.current.phi = clampPhiWithFov(spherical.current.phi + (e.touches[0].clientY - prev.current.y) * k);
         prev.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       } else if (e.touches.length === 2) {
         const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        const newFov = Math.max(fovMin, Math.min(fovMax, cam.fov - (d - lastDist) * 0.1));
-        cam.fov = newFov;
-        cam.updateProjectionMatrix();
-        spherical.current.theta = clampWithFov(spherical.current.theta, cam.fov, cam.aspect);
-        spherical.current.phi = clampPhiWithFov(spherical.current.phi, cam.fov);
+        hfov.current = Math.max(hfovMinDeg, Math.min(hfovMaxDeg, hfov.current - (d - lastDist) * 0.1));
+        applyHfov();
         lastDist = d;
       }
     };
@@ -339,7 +363,7 @@ function CameraControlsPartial({
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
     };
-  }, [camera, gl, clampWithFov, clampPhiWithFov, fovMin, fovMax]);
+  }, [camera, gl, clampThetaWithFov, clampPhiWithFov, applyHfov, hfovMinDeg, hfovMaxDeg]);
 
   useFrame(() => { target.current.setFromSpherical(spherical.current); camera.lookAt(target.current); });
   return null;
@@ -437,28 +461,48 @@ export default function PanoramaViewer({
   contentBottomNorm,
   initialYawDeg,
   initialPitchDeg,
-  verticalFovDeg,
   recommendedHfovDeg,
   minHfovDeg,
   maxHfovDeg,
 }: PanoramaViewerProps) {
   const [loading, setLoading] = useState(true);
   const [resolvedMode, setResolvedMode] = useState<PanoramaMode | null>(viewerMode ?? null);
+  // Aspect ratio of the loaded image: null = probing, 0 = failed to load
+  const [imageAspect, setImageAspect] = useState<number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-detect if no explicit mode
+  // Probe image dimensions (needed to derive angular bounds when the backend
+  // supplies none) and auto-detect the mode if none was given explicitly.
   useEffect(() => {
-    if (viewerMode) { setResolvedMode(viewerMode); return; }
-    setLoading(true);
-    setResolvedMode(null);
+    let cancelled = false;
+    if (viewerMode) {
+      setResolvedMode(viewerMode);
+    } else {
+      setLoading(true);
+      setResolvedMode(null);
+    }
+    setImageAspect(null);
     const img = new Image();
     img.onload = () => {
-      const ratio = img.width / img.height;
-      setResolvedMode(ratio >= 1.85 && ratio <= 2.15 ? 'panorama_360' : 'panorama_flat');
+      if (cancelled) return;
+      const ratio = img.naturalWidth / Math.max(1, img.naturalHeight);
+      setImageAspect(ratio);
+      if (!viewerMode) {
+        setResolvedMode(
+          ratio >= 1.8 && ratio <= 2.2 ? 'panorama_360'
+          : ratio >= 1.35 ? 'panorama_partial'
+          : 'panorama_flat'
+        );
+      }
     };
-    img.onerror = () => setResolvedMode('panorama_flat');
+    img.onerror = () => {
+      if (cancelled) return;
+      setImageAspect(0);
+      if (!viewerMode) setResolvedMode('panorama_flat');
+    };
     img.src = imageUrl;
+    return () => { cancelled = true; };
   }, [imageUrl, viewerMode]);
 
   const handleLoaded = useCallback(() => setLoading(false), []);
@@ -480,34 +524,46 @@ export default function PanoramaViewer({
 
   /* ---- Partial panorama geometry & control params ---- */
 
-  // Yaw bounds (Three.js theta, radians)
-  const yawMinRad = ((yawMinDeg ?? -90) * Math.PI) / 180;
-  const yawMaxRad = ((yawMaxDeg ?? 90) * Math.PI) / 180;
-  const initialYawRad = ((initialYawDeg ?? 0) * Math.PI) / 180;
-
-  // Pitch -> phi conversion: phi = PI/2 - pitch_rad
-  const pitchMinRad = pitchMinDeg != null ? (pitchMinDeg * Math.PI) / 180 : undefined;
-  const pitchMaxRad = pitchMaxDeg != null ? (pitchMaxDeg * Math.PI) / 180 : undefined;
-  const phiMin = pitchMaxRad != null ? Math.max(0.05, Math.PI / 2 - pitchMaxRad) : 0.4;
-  const phiMax = pitchMinRad != null ? Math.min(Math.PI - 0.05, Math.PI / 2 - pitchMinRad) : Math.PI - 0.4;
-  const initialPitchRad = initialPitchDeg != null ? (initialPitchDeg * Math.PI) / 180 : 0;
-  const initialPhi = Math.max(phiMin, Math.min(phiMax, Math.PI / 2 - initialPitchRad));
-
-  // FOV limits for partial mode
-  const recFov = recommendedHfovDeg ?? verticalFovDeg ?? 60;
-  const cameraFov = Math.min(recFov * 0.85, 70);
-  const fovMin = minHfovDeg ? Math.max(20, minHfovDeg * 0.6) : 25;
-  const fovMax = maxHfovDeg ? Math.min(maxHfovDeg * 0.7, 80) : Math.min(cameraFov + 10, 80);
+  // Estimated angular coverage from the image aspect ratio, used when the
+  // backend supplied no content bounds (auto-detected images, legacy rooms).
+  const derived = imageAspect && imageAspect > 0
+    ? (() => {
+        const hfov = Math.min(360, ASSUMED_SWEEP_VFOV_DEG * imageAspect);
+        const vfov = Math.min(90, Math.max(30, hfov / imageAspect));
+        return { halfYaw: hfov / 2, halfPitch: vfov / 2 };
+      })()
+    : null;
 
   // --- Geometry (texture) bounds ---------------------------------------
   // The full panorama texture spans these angles. Derived from the captured
   // CONTENT bounds (not the tighter camera clamp), so the image is never
-  // squished into the small "safe" region. We fall back to the clamp bounds
-  // when content bounds are absent (older rooms) to preserve prior behavior.
-  const cYawMin = contentYawMinDeg ?? yawMinDeg ?? -90;
-  const cYawMax = contentYawMaxDeg ?? yawMaxDeg ?? 90;
-  const cPitchMin = contentPitchMinDeg ?? pitchMinDeg ?? -45;
-  const cPitchMax = contentPitchMaxDeg ?? pitchMaxDeg ?? 45;
+  // squished into the small "safe" region.
+  const cYawMin = contentYawMinDeg ?? (derived ? -derived.halfYaw : yawMinDeg ?? -90);
+  const cYawMax = contentYawMaxDeg ?? (derived ? derived.halfYaw : yawMaxDeg ?? 90);
+  const cPitchMin = contentPitchMinDeg ?? (derived ? -derived.halfPitch : pitchMinDeg ?? -45);
+  const cPitchMax = contentPitchMaxDeg ?? (derived ? derived.halfPitch : pitchMaxDeg ?? 45);
+
+  // --- Camera clamp bounds ----------------------------------------------
+  // Clamp directly against the content bounds: the controls subtract half the
+  // camera FOV from these, which is what actually keeps padding out of view.
+  // Stored "safe" bounds from older rooms already had FOV-sized margins baked
+  // in, so clamping against them would double-clamp and freeze the camera.
+  const clampYawMinRad = (cYawMin * Math.PI) / 180;
+  const clampYawMaxRad = (cYawMax * Math.PI) / 180;
+  const clampPhiMin = Math.max(0.02, Math.PI / 2 - (cPitchMax * Math.PI) / 180);
+  const clampPhiMax = Math.min(Math.PI - 0.02, Math.PI / 2 - (cPitchMin * Math.PI) / 180);
+
+  const initialYawRad = ((initialYawDeg ?? 0) * Math.PI) / 180;
+  const initialPitchRad = ((initialPitchDeg ?? 0) * Math.PI) / 180;
+  const initialPhi = Math.max(clampPhiMin, Math.min(clampPhiMax, Math.PI / 2 - initialPitchRad));
+
+  // FOV limits in horizontal degrees; the controls convert them to the
+  // vertical FOV three.js needs using the live viewport aspect.
+  const contentHfovDeg = Math.max(20, cYawMax - cYawMin);
+  const recHfov = recommendedHfovDeg
+    ?? Math.min(75, Math.max(45, contentHfovDeg * 0.4), contentHfovDeg * 0.85);
+  const minHfov = minHfovDeg ?? 30;
+  const maxHfov = Math.max(recHfov, maxHfovDeg ?? Math.min(100, contentHfovDeg * 0.9));
   const lNorm = contentLeftNorm ?? 0;
   const rNorm = contentRightNorm ?? 1;
   const tNorm = contentTopNorm ?? 0;
@@ -536,10 +592,12 @@ export default function PanoramaViewer({
   const geomPhiMax = Math.min(Math.PI - 0.001, Math.PI / 2 - (geomPitchMinDeg * Math.PI) / 180);
 
   console.log('[PanoramaViewer] mode:', resolvedMode,
-    'clampYaw:', yawMinDeg, '→', yawMaxDeg, 'clampPitch:', pitchMinDeg, '→', pitchMaxDeg,
+    'contentYaw:', cYawMin.toFixed(1), '→', cYawMax.toFixed(1),
+    'contentPitch:', cPitchMin.toFixed(1), '→', cPitchMax.toFixed(1),
     'geomYaw:', (geomYawMinRad * 180 / Math.PI).toFixed(1), '→', (geomYawMaxRad * 180 / Math.PI).toFixed(1),
     'geomPitch:', geomPitchMinDeg.toFixed(1), '→', geomPitchMaxDeg.toFixed(1),
-    'fov:', cameraFov, 'fovRange:', fovMin, '-', fovMax);
+    'hfov:', recHfov.toFixed(1), 'hfovRange:', minHfov, '-', maxHfov.toFixed(1),
+    'imageAspect:', imageAspect?.toFixed(3));
 
   const modeLabel = resolvedMode === 'panorama_360' ? '360 View'
     : resolvedMode === 'panorama_partial' ? 'Panoramic View'
@@ -549,8 +607,13 @@ export default function PanoramaViewer({
     : resolvedMode === 'panorama_partial' ? 'Drag to explore panorama'
     : 'Drag to explore panorama';
 
+  // Partial mode without explicit bounds needs the image aspect probe to finish
+  // before geometry can be built (null = still probing).
+  const awaitingAspect =
+    resolvedMode === 'panorama_partial' && contentYawMinDeg == null && imageAspect === null;
+
   // Loading / detecting
-  if (!resolvedMode) {
+  if (!resolvedMode || awaitingAspect) {
     return (
       <div className={`relative w-full h-full ${className}`}>
         <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'hsl(220,15%,8%)' }}>
@@ -579,7 +642,7 @@ export default function PanoramaViewer({
       {isImmersive ? (
         <>
           <Canvas
-            camera={{ fov: resolvedMode === 'panorama_partial' ? cameraFov : 75, position: [0, 0, 0.1] }}
+            camera={{ fov: resolvedMode === 'panorama_partial' ? 60 : 75, position: [0, 0, 0.1] }}
             gl={{ antialias: true }}
             style={{ background: 'hsl(220,15%,8%)' }}
           >
@@ -599,14 +662,15 @@ export default function PanoramaViewer({
                   onLoaded={handleLoaded}
                 />
                 <CameraControlsPartial
-                  yawMinRad={yawMinRad}
-                  yawMaxRad={yawMaxRad}
-                  phiMinRad={phiMin}
-                  phiMaxRad={phiMax}
+                  yawMinRad={clampYawMinRad}
+                  yawMaxRad={clampYawMaxRad}
+                  phiMinRad={clampPhiMin}
+                  phiMaxRad={clampPhiMax}
                   initialYawRad={initialYawRad}
                   initialPhiRad={initialPhi}
-                  fovMin={fovMin}
-                  fovMax={fovMax}
+                  hfovDeg={recHfov}
+                  hfovMinDeg={minHfov}
+                  hfovMaxDeg={maxHfov}
                 />
               </>
             )}
