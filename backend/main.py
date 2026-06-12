@@ -48,11 +48,12 @@ app = FastAPI(
 _frontend_url = os.environ.get("FRONTEND_URL", "")
 _cors_origins = [o.strip() for o in _frontend_url.split(",") if o.strip()]
 
-# Matches https://tourguideai-monorepo*.vercel.app (prod alias + preview builds)
+# Matches https://roomshareofficial*.vercel.app (prod alias + preview builds),
+# the legacy https://tourguideai*.vercel.app domains (existing shared links),
 # and http://localhost:<port> / http://127.0.0.1:<port> for local development.
 # Fully anchored so it is safe whether Starlette uses re.match or re.fullmatch.
 _cors_origin_regex = (
-    r"^(https://tourguideai[a-z0-9-]*\.vercel\.app"
+    r"^(https://(roomshareofficial|tourguideai)[a-z0-9-]*\.vercel\.app"
     r"|http://(localhost|127\.0\.0\.1)(:\d+)?)$"
 )
 
