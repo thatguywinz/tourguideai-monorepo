@@ -20,6 +20,18 @@ function hfovToVfovDeg(hfovDeg: number, aspect: number): number {
   return (2 * Math.atan(Math.tan(halfH) / Math.max(aspect, 0.1)) * 180) / Math.PI;
 }
 
+/** Widest azimuth half-angle (radians) the camera frustum reaches on the
+ *  panorama sphere. At pitch 0 this equals the horizontal half-FOV, but when
+ *  the camera is pitched the screen's top/bottom edge sweeps a wider arc, so
+ *  the reach grows with |pitch|. Returns Infinity past a pole. */
+function azimuthReachRad(halfVRad: number, aspect: number, pitchRad: number): number {
+  const halfHRad = Math.atan(Math.tan(halfVRad) * aspect);
+  const p = Math.abs(pitchRad);
+  const denom = Math.cos(p) - Math.tan(halfVRad) * Math.sin(p);
+  if (denom <= 1e-4) return Number.POSITIVE_INFINITY;
+  return Math.atan(Math.tan(halfHRad) / denom);
+}
+
 export interface PanoramaViewerProps {
   imageUrl: string;
   className?: string;
@@ -263,21 +275,46 @@ function CameraControlsPartial({
   const target = useRef(new THREE.Vector3());
   const hfov = useRef(Math.max(hfovMinDeg, Math.min(hfovMaxDeg, hfovDeg)));
 
-  // The camera's vertical FOV may never exceed the captured vertical span,
-  // otherwise empty space above/below the panorama is always in view.
-  const vfovCapDeg = Math.max(20, ((phiMaxRad - phiMinRad) * 180) / Math.PI * 0.95);
+  // Content spans in pitch terms (pitch = PI/2 - phi, elevation above horizon)
+  const pitchMinRad = Math.PI / 2 - phiMaxRad;
+  const pitchMaxRad = Math.PI / 2 - phiMinRad;
+  const yawHalfSpanRad = (yawMaxRad - yawMinRad) / 2;
+  const vSpanRad = phiMaxRad - phiMinRad;
 
-  // Clamp theta so the camera frustum never extends past the geometry edges
-  const clampThetaWithFov = useCallback((theta: number) => {
-    const cam = camera as THREE.PerspectiveCamera;
-    const halfHRad = Math.atan(Math.tan((cam.fov * Math.PI) / 360) * cam.aspect);
-    const effectiveMin = yawMinRad + halfHRad;
-    const effectiveMax = yawMaxRad - halfHRad;
-    if (effectiveMin >= effectiveMax) {
-      return (yawMinRad + yawMaxRad) / 2;
+  // Worst |pitch| the camera can reach once vertically clamped for this FOV
+  const worstPitchFor = useCallback((halfVRad: number) => {
+    const lo = pitchMinRad + halfVRad;
+    const hi = pitchMaxRad - halfVRad;
+    if (lo >= hi) return Math.abs((pitchMinRad + pitchMaxRad) / 2);
+    return Math.max(Math.abs(lo), Math.abs(hi));
+  }, [pitchMinRad, pitchMaxRad]);
+
+  // Whether a vertical FOV keeps the whole frustum inside the captured image
+  // for every camera orientation the clamps allow at this viewport aspect.
+  const fitsContent = useCallback((vfovRad: number, aspect: number) => {
+    if (vfovRad > vSpanRad * 0.995) return false;
+    const halfV = vfovRad / 2;
+    return azimuthReachRad(halfV, aspect, worstPitchFor(halfV)) <= yawHalfSpanRad;
+  }, [vSpanRad, yawHalfSpanRad, worstPitchFor]);
+
+  // Largest vertical FOV that never exposes space beyond the image, derived
+  // from the picture's angular size and the live viewport aspect. This is the
+  // hard zoom-out limit: past it, no orientation could hide the edges.
+  const maxVfovRad = useCallback((aspect: number) => {
+    const FLOOR = (5 * Math.PI) / 180;
+    let hi = vSpanRad * 0.995;
+    if (fitsContent(hi, aspect)) return hi;
+    let lo = FLOOR;
+    for (let i = 0; i < 28; i++) {
+      const mid = (lo + hi) / 2;
+      if (fitsContent(mid, aspect)) lo = mid; else hi = mid;
     }
-    return Math.max(effectiveMin, Math.min(effectiveMax, theta));
-  }, [camera, yawMinRad, yawMaxRad]);
+    // fitsContent is not strictly monotonic in FOV; back off until the result
+    // genuinely fits so the per-frame clamps below can always hold.
+    let result = lo;
+    for (let i = 0; i < 32 && result > FLOOR && !fitsContent(result, aspect); i++) result *= 0.98;
+    return result;
+  }, [vSpanRad, fitsContent]);
 
   const clampPhiWithFov = useCallback((phi: number) => {
     const cam = camera as THREE.PerspectiveCamera;
@@ -290,13 +327,32 @@ function CameraControlsPartial({
     return Math.max(effectiveMin, Math.min(effectiveMax, phi));
   }, [camera, phiMinRad, phiMaxRad]);
 
+  // Clamp theta against the pitch-aware azimuth reach: looking up or down
+  // widens the arc the screen edges cover, so the yaw margin grows with it.
+  const clampThetaWithFov = useCallback((theta: number, phi: number) => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const halfVRad = (cam.fov * Math.PI) / 360;
+    const reach = azimuthReachRad(halfVRad, cam.aspect, Math.PI / 2 - phi);
+    const effectiveMin = yawMinRad + reach;
+    const effectiveMax = yawMaxRad - reach;
+    if (effectiveMin >= effectiveMax) {
+      return (yawMinRad + yawMaxRad) / 2;
+    }
+    return Math.max(effectiveMin, Math.min(effectiveMax, theta));
+  }, [camera, yawMinRad, yawMaxRad]);
+
   const applyHfov = useCallback(() => {
     const cam = camera as THREE.PerspectiveCamera;
-    cam.fov = Math.min(hfovToVfovDeg(hfov.current, cam.aspect), vfovCapDeg);
+    const capRad = maxVfovRad(cam.aspect);
+    const capHfovDeg = (2 * Math.atan(Math.tan(capRad / 2) * cam.aspect) * 180) / Math.PI;
+    const effMaxHfov = Math.min(hfovMaxDeg, capHfovDeg);
+    const effMinHfov = Math.min(hfovMinDeg, effMaxHfov);
+    hfov.current = Math.max(effMinHfov, Math.min(effMaxHfov, hfov.current));
+    cam.fov = Math.min(hfovToVfovDeg(hfov.current, cam.aspect), (capRad * 180) / Math.PI);
     cam.updateProjectionMatrix();
-    spherical.current.theta = clampThetaWithFov(spherical.current.theta);
     spherical.current.phi = clampPhiWithFov(spherical.current.phi);
-  }, [camera, vfovCapDeg, clampThetaWithFov, clampPhiWithFov]);
+    spherical.current.theta = clampThetaWithFov(spherical.current.theta, spherical.current.phi);
+  }, [camera, maxVfovRad, hfovMinDeg, hfovMaxDeg, clampThetaWithFov, clampPhiWithFov]);
 
   // Apply FOV on mount and whenever the viewport aspect changes
   useEffect(() => { applyHfov(); }, [applyHfov, size.width, size.height]);
@@ -312,14 +368,14 @@ function CameraControlsPartial({
     const onMove = (e: PointerEvent) => {
       if (!isDragging.current) return;
       const k = radPerPx();
-      spherical.current.theta = clampThetaWithFov(spherical.current.theta - (e.clientX - prev.current.x) * k);
       spherical.current.phi = clampPhiWithFov(spherical.current.phi + (e.clientY - prev.current.y) * k);
+      spherical.current.theta = clampThetaWithFov(spherical.current.theta - (e.clientX - prev.current.x) * k, spherical.current.phi);
       prev.current = { x: e.clientX, y: e.clientY };
     };
     const onUp = () => { isDragging.current = false; el.style.cursor = 'grab'; };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      hfov.current = Math.max(hfovMinDeg, Math.min(hfovMaxDeg, hfov.current + e.deltaY * 0.05));
+      hfov.current += e.deltaY * 0.05; // applyHfov clamps to the dynamic limits
       applyHfov();
     };
 
@@ -332,12 +388,12 @@ function CameraControlsPartial({
       e.preventDefault();
       if (e.touches.length === 1 && isDragging.current) {
         const k = radPerPx();
-        spherical.current.theta = clampThetaWithFov(spherical.current.theta - (e.touches[0].clientX - prev.current.x) * k);
         spherical.current.phi = clampPhiWithFov(spherical.current.phi + (e.touches[0].clientY - prev.current.y) * k);
+        spherical.current.theta = clampThetaWithFov(spherical.current.theta - (e.touches[0].clientX - prev.current.x) * k, spherical.current.phi);
         prev.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       } else if (e.touches.length === 2) {
         const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        hfov.current = Math.max(hfovMinDeg, Math.min(hfovMaxDeg, hfov.current - (d - lastDist) * 0.1));
+        hfov.current -= (d - lastDist) * 0.1; // applyHfov clamps to the dynamic limits
         applyHfov();
         lastDist = d;
       }
@@ -370,19 +426,6 @@ function CameraControlsPartial({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Edge-fade overlay for partial panoramas                           */
-/* ------------------------------------------------------------------ */
-
-function EdgeFadeOverlay() {
-  return (
-    <div className="absolute inset-0 pointer-events-none z-[5]">
-      <div className="absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-black/60 to-transparent" />
-      <div className="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-black/60 to-transparent" />
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  Flat Pan/Zoom Viewer                                               */
 /* ------------------------------------------------------------------ */
 
@@ -390,7 +433,40 @@ function FlatPanoViewer({ imageUrl, onLoaded }: { imageUrl: string; onLoaded?: (
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const [imgAspect, setImgAspect] = useState(0);
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   const drag = useRef({ active: false, startX: 0, startY: 0, origX: 0, origY: 0 });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setContainerSize({ w: el.clientWidth, h: el.clientHeight });
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // The image is laid out at container height x natural aspect, then scaled.
+  // Pan and zoom are clamped so the image always covers the viewport: its
+  // edges and the background behind it can never scroll into view.
+  const clampTransform = useCallback((t: { x: number; y: number; scale: number }) => {
+    if (!imgAspect || !containerSize.w || !containerSize.h) {
+      return { ...t, scale: Math.max(1, Math.min(4, t.scale)) };
+    }
+    const coverScale = Math.max(1, containerSize.w / (containerSize.h * imgAspect));
+    const scale = Math.max(coverScale, Math.min(coverScale * 4, t.scale));
+    const maxX = Math.max(0, (containerSize.h * imgAspect * scale - containerSize.w) / 2);
+    const maxY = Math.max(0, (containerSize.h * scale - containerSize.h) / 2);
+    return {
+      x: Math.max(-maxX, Math.min(maxX, t.x)),
+      y: Math.max(-maxY, Math.min(maxY, t.y)),
+      scale,
+    };
+  }, [imgAspect, containerSize]);
+
+  // Re-clamp whenever the container or image dimensions change
+  useEffect(() => { setTransform(t => clampTransform(t)); }, [clampTransform]);
 
   const onDown = useCallback((cx: number, cy: number) => {
     drag.current = { active: true, startX: cx, startY: cy, origX: transform.x, origY: transform.y };
@@ -398,15 +474,25 @@ function FlatPanoViewer({ imageUrl, onLoaded }: { imageUrl: string; onLoaded?: (
 
   const onMove = useCallback((cx: number, cy: number) => {
     if (!drag.current.active) return;
-    setTransform(t => ({ ...t, x: drag.current.origX + (cx - drag.current.startX), y: drag.current.origY + (cy - drag.current.startY) }));
-  }, []);
+    setTransform(t => clampTransform({
+      ...t,
+      x: drag.current.origX + (cx - drag.current.startX),
+      y: drag.current.origY + (cy - drag.current.startY),
+    }));
+  }, [clampTransform]);
 
   const onUp = useCallback(() => { drag.current.active = false; }, []);
 
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.stopPropagation();
-    setTransform(t => ({ ...t, scale: Math.max(0.5, Math.min(4, t.scale - e.deltaY * 0.002)) }));
-  }, []);
+    setTransform(t => clampTransform({ ...t, scale: t.scale - e.deltaY * 0.002 }));
+  }, [clampTransform]);
+
+  const handleImgLoad = useCallback(() => {
+    const img = imgRef.current;
+    if (img && img.naturalHeight > 0) setImgAspect(img.naturalWidth / img.naturalHeight);
+    onLoaded?.();
+  }, [onLoaded]);
 
   return (
     <div
@@ -423,7 +509,7 @@ function FlatPanoViewer({ imageUrl, onLoaded }: { imageUrl: string; onLoaded?: (
         ref={imgRef}
         src={imageUrl}
         alt="Panoramic preview"
-        onLoad={onLoaded}
+        onLoad={handleImgLoad}
         onError={onLoaded}
         draggable={false}
         className="absolute top-1/2 left-1/2 max-h-full select-none"
@@ -675,7 +761,6 @@ export default function PanoramaViewer({
               </>
             )}
           </Canvas>
-          {resolvedMode === 'panorama_partial' && !loading && <EdgeFadeOverlay />}
         </>
       ) : (
         <FlatPanoViewer imageUrl={imageUrl} onLoaded={handleLoaded} />
