@@ -21,6 +21,7 @@ const App = () => (
           <Route path="/upload" element={<CreateRoom />} />
           <Route path="/processing" element={<Processing />} />
           <Route path="/viewer" element={<Viewer />} />
+          <Route path="/viewer/:roomId" element={<Viewer />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

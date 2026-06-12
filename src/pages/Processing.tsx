@@ -64,7 +64,7 @@ export default function Processing() {
       if (data.status === 'complete') {
         if (intervalRef.current) clearInterval(intervalRef.current);
         localStorage.setItem('tourguide_viewer', JSON.stringify({ roomName, fileName, roomId, jobId }));
-        setTimeout(() => navigate('/viewer', { state: { roomName, fileName, roomId, jobId } }), 1400);
+        setTimeout(() => navigate(`/viewer/${roomId}`, { state: { roomName, fileName, roomId, jobId } }), 1400);
       }
     } catch (err: any) {
       console.error('Poll error:', err);

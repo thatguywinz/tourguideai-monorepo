@@ -1,13 +1,15 @@
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
 import { getRoom, resolveAssetUrl, type RoomData, type ViewerConfig } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Share2, Loader2, ImageOff, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Share2, Check, Loader2, ImageOff, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 import PanoramaViewer, { type PanoramaMode } from '@/components/PanoramaViewer';
 
 export default function Viewer() {
   const location = useLocation();
   const navigate = useNavigate();
+  const params = useParams<{ roomId?: string }>();
 
   const routeState = (location.state as { roomName?: string; fileName?: string; roomId?: string }) || {};
   const stored = (() => {
@@ -15,8 +17,19 @@ export default function Viewer() {
     catch { return {}; }
   })();
 
-  const roomId = routeState.roomId || stored.roomId;
-  const initialName = routeState.roomName || stored.roomName || 'Untitled Room';
+  const roomId = params.roomId || routeState.roomId || stored.roomId;
+  const initialName =
+    routeState.roomName ||
+    (stored.roomId === roomId ? stored.roomName : undefined) ||
+    'Untitled Room';
+
+  // Keep the address bar shareable: if the room came from route state or
+  // localStorage, rewrite the URL to the canonical /viewer/:roomId form.
+  useEffect(() => {
+    if (roomId && !params.roomId) {
+      navigate(`/viewer/${roomId}`, { replace: true, state: location.state });
+    }
+  }, [roomId, params.roomId, navigate, location.state]);
 
   const [displayName, setDisplayName] = useState(initialName);
   const [panoramaUrl, setPanoramaUrl] = useState<string | undefined>();
@@ -24,6 +37,52 @@ export default function Viewer() {
   const [viewerConfig, setViewerConfig] = useState<ViewerConfig | undefined>();
   const [loading, setLoading] = useState(!!roomId);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleShare = useCallback(async () => {
+    if (!roomId) return;
+    const shareUrl = `${window.location.origin}/viewer/${roomId}`;
+
+    // Native share sheet on touch devices (mobile/tablet)
+    const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+    if (isTouchDevice && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: `${displayName} — TourGuide AI`,
+          text: `Take a 360° tour of ${displayName}`,
+          url: shareUrl,
+        });
+        return;
+      } catch (err) {
+        if ((err as DOMException)?.name === 'AbortError') return; // user dismissed the sheet
+        // otherwise fall through to clipboard
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      // Clipboard API unavailable (e.g. insecure context) — legacy fallback
+      const textarea = document.createElement('textarea');
+      textarea.value = shareUrl;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+      } catch {
+        document.body.removeChild(textarea);
+        toast.error('Could not copy the link. Copy it from the address bar instead.');
+        return;
+      }
+      document.body.removeChild(textarea);
+    }
+
+    setCopied(true);
+    toast.success('Share link copied to clipboard');
+    setTimeout(() => setCopied(false), 2000);
+  }, [roomId, displayName]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -96,9 +155,14 @@ export default function Viewer() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground hidden sm:block truncate max-w-[200px]">{displayName}</span>
-            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5 hidden sm:flex">
-              <Share2 className="h-3.5 w-3.5" />
-              Share
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground gap-1.5"
+              onClick={handleShare}
+            >
+              {copied ? <Check className="h-3.5 w-3.5 text-accent" /> : <Share2 className="h-3.5 w-3.5" />}
+              {copied ? 'Copied' : 'Share'}
             </Button>
           </div>
         </div>
